@@ -1,137 +1,255 @@
-# LicenseGate
+# LicenseGate V2.1
 
-**Consensus-verified dependency license admission on GenLayer StudioNet.**
+**Authenticate the package version and license source before asking GenLayer whether the license is compatible.**
 
-LicenseGate is a production frontend built around the already-approved `LicenseCompat.py` Intelligent Contract. It keeps the approved contract source unchanged and exposes its existing workflow as a usable product:
+LicenseGate is a GenLayer Intelligent Contract + dApp for package-license admission. V2 directly addresses the steward request that the original version relied on maintainer-supplied license text and keyed registry uniqueness by the license itself.
 
-- connect MetaMask on GenLayer StudioNet;
-- submit a dependency name and full license text;
-- wait for validator consensus;
-- display the finalized `COMPATIBLE` / `INCOMPATIBLE` decision;
-- deterministically grow the registry only after `COMPATIBLE`;
-- browse stored compatible dependencies from authoritative on-chain state.
-
-## Studio project name
+The V2 flow is now:
 
 ```text
-LicenseGate
+commit-pinned package manifest
+          +
+commit-pinned license source
+          |
+          v
+artifact authentication
+(name + version + exact license path)
+          |
+          v
+GenLayer semantic compatibility
+          |
+          +--> COMPATIBLE   -> admitted package record
+          |
+          +--> INCOMPATIBLE -> verdict recorded, not admitted
 ```
 
-Contract file:
+## V2.1 runtime fetch transport
+
+Commit-pinned GitHub blob/raw locators are deterministically normalized to the equivalent `raw.githubusercontent.com/<owner>/<repo>/<40-hex-commit>/<path>` URL and fetched with `gl.nondet.web.render(..., mode="text")`. This keeps the immutable submitted Git identity while avoiding GitHub REST API authentication/JSON/base64 transport inside validator execution.
+
+
+## Steward request addressed
+
+The requested changes were:
+
+1. bind each verdict to an authenticated package version;
+2. bind each verdict to a verifiable license source instead of pasted maintainer text;
+3. include package identity in the registry key so different dependencies using the same license can both be recorded.
+
+V2 implements all three in the Intelligent Contract itself.
+
+### 1. Artifact-authenticated package version
+
+`evaluate_dependency()` requires:
 
 ```text
-LicenseCompat.py
+package_name
+package_version
+package_uri
+package_digest
+license_uri
+license_digest
 ```
 
-Changing the Studio project name does not change the approved contract logic.
+`package_uri` must be a public GitHub file pinned to the submitted 40-hex Git commit. Validators fetch the package manifest and require this schema:
 
-## Contract integrity
+```json
+{
+  "schema": "licensegate-package-v1",
+  "package_name": "PermissiveUI",
+  "package_version": "1.4.2",
+  "license_path": "fixtures/licenses/permissive.txt"
+}
+```
 
-The packaged contract remains unchanged from the approved source.
+The fetched `package_name` and `package_version` must exactly match the submitted package identity. A mismatch fails closed before semantic license classification.
+
+### 2. Verifiable license source
+
+The license is no longer pasted into the transaction.
+
+`license_uri` must be a commit-pinned GitHub file. The contract requires the package manifest and license source to use:
+
+- the same GitHub repository;
+- the same immutable 40-hex Git commit;
+- the exact `license_path` authenticated by the fetched package manifest.
+
+Validators then fetch that license artifact and compare it with the immutable compatibility policy.
+
+Package fetch failure, malformed manifest, package/version mismatch, license binding mismatch, license fetch failure, or an oversized license artifact all fail closed.
+
+### 3. Package identity is the registry key
+
+V1 deduplicated compatible dependencies by a hash of policy + license text. That incorrectly prevented two different packages using the same license from both being recorded.
+
+V2 derives a package key from:
 
 ```text
-SHA256: f1cb33f88b6961b322e5203b363de25aee27f4a67d64a93d2afe203c41fce45d
+lowercase(package_name) + exact package_version
 ```
 
-## Production deployment
+using length-prefixed canonical encoding and `Keccak256`.
 
-Fresh StudioNet contract used by the frontend and production runtime test:
+Therefore:
 
 ```text
-0x7D2DA7eA1aE728Aa6c673D439d26be389BE44736
+PermissiveUI@1.4.2      -> permissive.txt -> separate package record
+PermissiveCharts@2.0.0  -> permissive.txt -> separate package record
 ```
 
-Explorer:
+The same authenticated package name + version may only receive one finalized verdict.
 
-```text
-https://explorer-studio.genlayer.com/address/0x7D2DA7eA1aE728Aa6c673D439d26be389BE44736
-```
+## Immutable compatibility policy
 
-Production frontend tested on:
-
-```text
-https://license-gate-iota.vercel.app/
-```
-
-The deployed compatibility policy is immutable:
+Deploy with:
 
 ```text
 Dependencies must permit commercial use, modification, and redistribution as part of this project without requiring the combined project to disclose its proprietary source code or to be relicensed under the dependency's license.
 ```
 
-The address is stamped into `contract-config.js` and the production build. `npm run build` verifies the configured address.
+The policy is stored once in the contract constructor and is not mutable afterward.
 
-## Contract behavior preserved
+## Deterministic state model
 
-`LicenseCompat.py` remains the authority:
+Every successful semantic evaluation creates an immutable evaluation record containing:
 
-```text
-COMPATIBLE   -> dependency_count increments and dependency is stored
-INCOMPATIBLE -> dependency_count does not increment
-```
+- package name;
+- package version;
+- package identity key;
+- package manifest URL + commit;
+- license source URL + commit;
+- `COMPATIBLE` / `INCOMPATIBLE` decision;
+- whether that verdict was admitted.
 
-Only the deployer/maintainer may call `evaluate_dependency`. Registry reads remain public.
+`COMPATIBLE` increments the compatible dependency registry.
 
-The frontend does not infer a semantic verdict from a transaction hash. It waits for transaction finalization and then re-reads contract state through the StudioNet RPC proxy.
+`INCOMPATIBLE` remains in evaluation history but does not increment the admitted registry.
 
-## Production runtime evidence — Aug 31, 2026
+This separates **verdict history** from **compatible package admission**.
 
-The final Vercel deployment was tested with MetaMask against the fresh StudioNet contract above.
+## Public contract methods
 
-Initial authoritative read:
-
-```text
-REGISTERED = 0
-LAST DECISION = —
-LAST EVALUATED = No evaluation yet
-```
-
-Compatible test:
+### Write
 
 ```text
-Dependency: PermissiveUI
-Decision: COMPATIBLE
-REGISTERED: 1
-LAST EVALUATED: PermissiveUI
+evaluate_dependency(
+  package_name,
+  package_version,
+  package_uri,
+  package_digest,
+  license_uri,
+  license_digest
+)
 ```
 
-The license explicitly permitted commercial use, modification, redistribution, sublicensing/sale, and did not impose source-disclosure or same-license obligations on combined works.
+Only the deployment maintainer may submit evaluations.
 
-Negative test:
+### Read
 
 ```text
-Dependency: CopyleftCore
-Decision: INCOMPATIBLE
-REGISTERED: 1
-LAST EVALUATED: CopyleftCore
+get_config()
+get_summary()
+get_package_evaluation_id(package_name, package_version)
+get_evaluation(evaluation_id)
+get_dependency(dependency_id)
 ```
 
-The negative license required combined/derivative works to use the same license and disclose complete corresponding source code. The authoritative registry count remained `1`, proving the incompatible evaluation did not grow the registry.
+Reads are public.
 
-## Verification status
+## Reviewer fixtures
+
+The repository includes three package manifests and two license sources:
 
 ```text
-Approved contract source preserved                  PASS
-Contract source SHA check                           PASS
-Fresh StudioNet deployment configured               PASS
-Production static build                             PASS
-Local compatible/incompatible smoke                 PASS
-Registry enforcement smoke                          PASS
-390px responsive smoke                              PASS
-Browser console smoke                               PASS
-Vercel MetaMask connection                          PASS
-Vercel initial on-chain read                        PASS
-Vercel COMPATIBLE -> registry count 1              PASS
-Vercel INCOMPATIBLE -> registry remains count 1    PASS
+fixtures/packages/permissive-ui.json
+fixtures/packages/permissive-charts.json
+fixtures/packages/copyleft-core.json
+fixtures/licenses/permissive.txt
+fixtures/licenses/copyleft.txt
 ```
 
-## Commands
+The first two packages deliberately authenticate the **same** permissive license file. This is the direct regression test for the steward request about package identity in the registry key.
+
+The reviewer fixtures are frozen at public commit:
+
+```text
+c14f69383066ec103dfa2654f726cd801455bd96
+```
+
+The UI exposes four reviewer presets:
+
+- Package A · permissive
+- Package B · same license
+- Copyleft
+- Version mismatch
+
+## Live V2.1 deployment
+
+This is a fresh Intelligent Contract deployment with the steward-requested trust model.
+
+StudioNet contract:
+
+```text
+0x75F709c6bd1ba99bc96847E7e901cfb1A00D3404
+```
+
+Explorer:
+
+```text
+https://explorer-studio.genlayer.com/address/0x75F709c6bd1ba99bc96847E7e901cfb1A00D3404
+```
+
+Reviewer fixture commit:
+
+```text
+c14f69383066ec103dfa2654f726cd801455bd96
+```
+
+Current V2.1 source SHA-256:
+
+```text
+56ea2f3d016804aa9bdd7470ac46614553cf04cfe91f2fa9c1aab3faae4bdaa0
+```
+
+## Local gates
 
 ```bash
-npm install
 npm run check:source
 npm run build
 npm run test:local
 ```
 
-The build has no third-party npm runtime dependencies.
+Observed verification status:
+
+```text
+V2 contract Python syntax                         PASS
+V2 source integrity check                        PASS
+Static production build                          PASS
+Package A authenticated compatible flow          PASS (StudioNet)
+Package B same-license distinct package record   PASS (StudioNet)
+Copyleft verdict recorded / not admitted         PASS (StudioNet)
+Package-version mismatch fail-closed              PASS (StudioNet)
+Non-maintainer authorization                     PASS (local mock)
+390px responsive smoke                           PASS
+Browser console smoke                            PASS
+StudioNet fresh deployment                       PASS
+Frontend static/local verification                PASS
+```
+
+See [`TESTING.md`](./TESTING.md) for the exact reviewer path and observed StudioNet evidence.
+
+## Frontend
+
+The production frontend:
+
+- connects MetaMask to StudioNet;
+- never accepts pasted license text for V2 writes;
+- provides commit-pinned package + license artifact fields;
+- waits for transaction finalization before re-reading state;
+- displays admitted package records and all verdict evidence separately;
+- links each record back to the authenticated package and license sources;
+- uses `/api/rpc` as the Vercel StudioNet read proxy.
+
+## Honest scope
+
+LicenseGate V2.1 authenticates the submitted package identity and license binding against a commit-pinned public package manifest and license artifact. It does not independently prove that the GitHub repository is the canonical upstream publisher for every ecosystem package. The contract does remove the V1 trust in pasted license prose and makes every finalized verdict auditable against immutable public artifacts.

@@ -1,12 +1,13 @@
 {
   "name": "licensegate",
-  "version": "1.0.0",
+  "version": "2.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
     "check:source": "node scripts/check-source.mjs",
     "set:contract": "node scripts/set-contract.mjs",
-    "test:local": "python3 scripts/smoke_local.py"
+    "test:local": "python3 scripts/smoke_local.py",
+    "set:fixtures": "node scripts/set-fixtures.mjs"
   }
 }

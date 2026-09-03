@@ -1,62 +1,38 @@
-# LicenseGate — Testing Evidence
+# LicenseGate V2.1 — Reviewer Testing
 
-## Final status
 
-Production frontend/runtime verification is **PASS** for the core approved LicenseCompat workflow.
+## Purpose
 
-Approved contract source SHA256:
+This test path directly exercises the steward request:
+
+> bind each verdict to an authenticated package version and license source, and include package identity in the registry key so different dependencies using the same license can both be recorded.
+
+## Frozen contract source
 
 ```text
-f1cb33f88b6961b322e5203b363de25aee27f4a67d64a93d2afe203c41fce45d
+contracts/LicenseCompat.py
+SHA-256: 56ea2f3d016804aa9bdd7470ac46614553cf04cfe91f2fa9c1aab3faae4bdaa0
 ```
 
-Fresh StudioNet deployment:
+Frozen StudioNet deployment:
 
 ```text
-0x7D2DA7eA1aE728Aa6c673D439d26be389BE44736
+0x75F709c6bd1ba99bc96847E7e901cfb1A00D3404
 ```
 
 Explorer:
 
 ```text
-https://explorer-studio.genlayer.com/address/0x7D2DA7eA1aE728Aa6c673D439d26be389BE44736
+https://explorer-studio.genlayer.com/address/0x75F709c6bd1ba99bc96847E7e901cfb1A00D3404
 ```
 
-Production Vercel URL tested:
+Reviewer fixture commit:
 
 ```text
-https://license-gate-iota.vercel.app/
+c14f69383066ec103dfa2654f726cd801455bd96
 ```
 
-Test date:
-
-```text
-2026-08-31
-```
-
-## Deployment baseline
-
-Studio project name:
-
-```text
-LicenseGate
-```
-
-Contract:
-
-```text
-LicenseCompat.py
-```
-
-Constructor `compatibility_policy`:
-
-```text
-Dependencies must permit commercial use, modification, and redistribution as part of this project without requiring the combined project to disclose its proprietary source code or to be relicensed under the dependency's license.
-```
-
-The frontend is configured to the fresh deployment above. The approved contract logic was not modified for the frontend project.
-
-## Static/local gates
+## Static/local verification — PASS
 
 Commands:
 
@@ -66,128 +42,259 @@ npm run build
 npm run test:local
 ```
 
-Observed coverage:
-
-```text
-contract source integrity                 PASS
-production static build                   PASS
-compatible local flow                     PASS
-incompatible local flow                   PASS
-registry enforcement                      PASS
-390px responsive layout                   PASS
-browser console smoke                     PASS
-```
-
-Mock mode is only a local UI harness and is not counted as production evidence.
-
-## Production runtime — initial read
-
-The final Vercel app loaded authoritative state from the fresh StudioNet deployment before any evaluation.
-
 Observed:
 
 ```text
-REGISTERED = 0
-LAST DECISION = —
-LAST EVALUATED = No evaluation yet
+V2 source integrity                         PASS
+static production build                     PASS
+Package A compatible -> admitted            PASS
+Package B same license -> distinct admitted PASS
+copyleft -> incompatible / not admitted     PASS
+version mismatch -> fail closed              PASS
+non-maintainer write -> rejected             PASS
+390px mobile overflow                       PASS
+browser console                             PASS
 ```
 
-Result:
+Local mock mode is UI/integration validation only. It is not presented as StudioNet semantic evidence.
+
+---
+
+# Reviewer self-test path
+
+Use the exact immutable compatibility policy shown in README when deploying.
+
+Before running the reviewer presets, the fixture files must already exist in a public GitHub commit and `runtime-config.js` must contain that 40-hex commit.
+
+## Step 1 — Verify frozen deployment
+
+Open the frozen deployment in Explorer and confirm the repository source matches `contracts/LicenseCompat.py`.
+
+Constructor policy:
 
 ```text
-PASS
+Dependencies must permit commercial use, modification, and redistribution as part of this project without requiring the combined project to disclose its proprietary source code or to be relicensed under the dependency's license.
 ```
 
-## Production runtime — compatible dependency
+The recorded runtime sequence began from:
 
-MetaMask was connected with the deployer/maintainer wallet.
+```text
+evaluation_count = 0
+dependency_count = 0
+```
 
-Dependency:
+## Step 2 — Verify immutable references
+
+The repository is configured with:
+
+```text
+contract = 0x75F709c6bd1ba99bc96847E7e901cfb1A00D3404
+fixture commit = c14f69383066ec103dfa2654f726cd801455bd96
+```
+
+Both package and license presets point to files under that same immutable commit.
+
+## Step 3 — Package A / permissive
+
+Connect the deployment maintainer wallet.
+
+Open **Evaluate** and choose:
+
+```text
+Package A · permissive
+```
+
+The preset submits:
 
 ```text
 PermissiveUI
+1.4.2
+fixtures/packages/permissive-ui.json
+fixtures/licenses/permissive.txt
+same public Git commit for both artifacts
 ```
 
-License text:
+Wait for `FINALIZED` and automatic state refresh.
+
+Expected:
 
 ```text
-Permission is granted to use, copy, modify, distribute, sublicense, and sell this software, including for commercial purposes. Modified or combined works may be distributed under any license chosen by the user. There is no requirement to disclose source code, publish modifications, or relicense the combined project under this license.
+last verdict = COMPATIBLE
+evaluation_count = 1
+dependency_count = 1
+PermissiveUI@1.4.2 appears in compatible registry
+Evaluation #1 retains package URI/digest + license URI/digest
 ```
 
-Observed after transaction finalization and authoritative state refresh:
+This proves a verdict is attached to authenticated package/version + license evidence rather than pasted license text.
+
+## Step 4 — Package B using the exact same license source
+
+Choose:
 
 ```text
-LAST DECISION = COMPATIBLE
-LAST EVALUATED = PermissiveUI
-REGISTERED = 1
+Package B · same license
 ```
 
-Result:
+The preset submits:
 
 ```text
-PASS
+PermissiveCharts
+2.0.0
+fixtures/packages/permissive-charts.json
+fixtures/licenses/permissive.txt
 ```
 
-This verifies that a permissive dependency satisfying the immutable project policy is admitted and increments the registry.
+The license URI/digest is intentionally identical to Package A.
 
-## Production runtime — incompatible dependency
-
-Dependency:
+Expected:
 
 ```text
-CopyleftCore
+last verdict = COMPATIBLE
+evaluation_count = 2
+dependency_count = 2
+PermissiveUI@1.4.2 remains recorded
+PermissiveCharts@2.0.0 is also recorded
 ```
 
-License text:
+**Critical steward gate:** two distinct package identities using the same license must both exist in the registry.
+
+## Step 5 — Copyleft negative branch
+
+Choose:
 
 ```text
-You may use, modify, and redistribute this software only if any combined or derivative work is licensed under the same license terms and its complete corresponding source code is publicly disclosed to recipients.
+Copyleft
 ```
 
-Observed after transaction finalization and authoritative state refresh:
+Expected:
 
 ```text
-LAST DECISION = INCOMPATIBLE
-LAST EVALUATED = CopyleftCore
-REGISTERED = 1
+last verdict = INCOMPATIBLE
+evaluation_count = 3
+dependency_count remains 2
+CopyleftCore@3.1.0 appears in evaluation history
+CopyleftCore@3.1.0 does not appear as an admitted compatible dependency
 ```
 
-Result:
+This proves semantic classification and deterministic admission remain separated.
+
+## Step 6 — Authenticated package-version mismatch
+
+Choose:
 
 ```text
-PASS
+Version mismatch
 ```
 
-The registry count remained exactly `1` after the incompatible evaluation. This verifies the deterministic enforcement boundary: semantic classification may update the last decision, but an incompatible dependency does not grow the authoritative compatible registry.
-
-## Production frontend integration
-
-Observed on the final Vercel URL:
+The preset intentionally declares:
 
 ```text
-MetaMask connection                      PASS
-Fresh contract address displayed         PASS
-Immutable compatibility policy displayed PASS
-StudioNet state read                      PASS
-COMPATIBLE verdict rendered               PASS
-Registry count increased to 1             PASS
-INCOMPATIBLE verdict rendered             PASS
-Registry count remained 1                 PASS
+PermissiveUI@9.9.9
 ```
 
-## Not re-proven here
-
-The underlying Intelligent Contract had already been accepted before this frontend build. This production frontend pass therefore focuses on contract/frontend parity and the two central semantic branches rather than repeating the full original contract-review suite.
-
-Additional authorization and public-read regression cases may be run if needed, but they are not required to support the production evidence above.
-
-## Final gate
+while the fetched package manifest authenticates:
 
 ```text
-CONTRACT SOURCE: PASS / unchanged
-LOCAL FRONTEND: PASS
-VERCEL FRONTEND: PASS
-COMPATIBLE RUNTIME: PASS
-INCOMPATIBLE RUNTIME: PASS
-REGISTRY ENFORCEMENT: PASS
+PermissiveUI@1.4.2
 ```
+
+Expected transaction execution error:
+
+```text
+Package name/version does not match authenticated manifest
+```
+
+Expected state:
+
+```text
+evaluation_count remains 3
+dependency_count remains 2
+no verdict record is created
+```
+
+This is the direct negative proof that a maintainer cannot obtain a verdict for an arbitrary claimed version using another package artifact.
+
+## Step 7 — License binding mismatch negative control
+
+Manually load the Package A fields, then change only `license_uri` to the copyleft license path while leaving the Package A manifest unchanged.
+
+Expected transaction execution error:
+
+```text
+License source does not match package manifest
+```
+
+Expected state does not change.
+
+This proves a real package manifest cannot be paired with an unrelated license source.
+
+## Step 8 — Public read / maintainer write boundary
+
+Switch to another wallet.
+
+Expected:
+
+```text
+Registry and evaluation evidence remain publicly readable
+evaluate_dependency write fails with Only maintainer
+```
+
+---
+
+# Observed StudioNet evidence — PASS
+
+The steward-critical sequence was executed on the frozen V2.1 deployment with maintainer `0x3065E31B1D993d7C0D59E6786844cBa56780B2d3`:
+
+```text
+Initial state
+  evaluation_count = 0
+  dependency_count = 0
+
+PermissiveUI@1.4.2
+  transaction = SUCCESS / ACCEPTED-FINALIZED
+  decision = COMPATIBLE
+  evaluation_count = 1
+  dependency_count = 1
+
+PermissiveCharts@2.0.0
+  exact same permissive license artifact as Package A
+  transaction = SUCCESS / ACCEPTED-FINALIZED
+  decision = COMPATIBLE
+  evaluation_count = 2
+  dependency_count = 2
+
+CopyleftCore@3.1.0
+  transaction = SUCCESS / FINALIZED
+  decision = INCOMPATIBLE
+  evaluation_count = 3
+  dependency_count = 2
+
+PermissiveUI@9.9.9 using the 1.4.2 authenticated manifest
+  result = ERROR / rollback
+  consensus = PACKAGE_IDENTITY_MISMATCH
+  error = Package name/version does not match authenticated manifest
+  evaluation_count remains 3
+  dependency_count remains 2
+```
+
+This directly demonstrates both parts of the steward request: verdicts are bound to authenticated package/version + license evidence, and different package identities using the same license are recorded independently.
+
+---
+
+# Final resubmission acceptance matrix
+
+```text
+Fresh V2.1 contract deployed                              PASS
+Exact V2.1 source hash locked                             PASS
+Fixture commit public + immutable                         PASS
+Package A authenticated -> COMPATIBLE -> admitted         PASS
+Package B same license -> COMPATIBLE -> second record     PASS
+Copyleft -> INCOMPATIBLE -> not admitted                  PASS
+Version mismatch -> execution error / no state mutation   PASS
+Registry identity keyed by package name + version         PASS
+Frontend source/build/local smoke                         PASS
+Vercel points to frozen V2.1 contract                     VERIFY AFTER DEPLOY
+```
+
+For resubmission, use only the frozen V2.1 Explorer address above together with the current GitHub repository and production Vercel URL.
