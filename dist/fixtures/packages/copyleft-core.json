@@ -1,0 +1,6 @@
+{
+  "schema": "licensegate-package-v1",
+  "package_name": "CopyleftCore",
+  "package_version": "3.1.0",
+  "license_path": "fixtures/licenses/copyleft.txt"
+}

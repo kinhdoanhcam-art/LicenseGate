@@ -2,7 +2,6 @@
 # { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
 
 from genlayer import *
-import base64
 import json
 import re
 
@@ -19,7 +18,7 @@ LICENSE_TOO_LARGE = "LICENSE_ARTIFACT_TOO_LARGE"
 
 
 class LicenseCompat(gl.Contract):
-    """LicenseGate V2 — artifact-bound package/license compatibility registry.
+    """LicenseGate V2.1 — artifact-bound package/license compatibility registry.
 
     Steward-requested trust model:
     - each verdict is bound to a commit-pinned package manifest and license source;
@@ -215,48 +214,51 @@ class LicenseCompat(gl.Contract):
         )
         return Keccak256(material.encode("utf-8")).hexdigest()
 
-    def _artifact_fetch_spec(self, artifact_uri: str, artifact_digest: str):
-        """Fetch a commit-pinned GitHub file through the GitHub Contents API."""
+    def _artifact_fetch_spec(self, artifact_uri: str, artifact_digest: str) -> str:
+        """Return the exact commit-pinned static artifact URL to render.
+
+        The submitted locator remains the immutable source identity. GitHub
+        blob/raw locators are deterministically normalized to the equivalent
+        raw.githubusercontent.com URL at the same 40-hex commit. This avoids
+        GitHub REST API transport, authentication, JSON decoding, and base64.
+        """
         lower = artifact_uri.lower()
         rest = artifact_uri[8:]
         segments = [segment for segment in rest.split("/")[1:] if segment != ""]
 
         if lower.startswith("https://raw.githubusercontent.com/"):
             if len(segments) < 4:
-                return ("", "")
-            owner = segments[0]
-            repo = segments[1]
+                return ""
             ref = segments[2]
             path = "/".join(segments[3:])
+            if ref.lower() != artifact_digest or not path:
+                return ""
+            return artifact_uri
 
-        elif lower.startswith("https://github.com/"):
+        if lower.startswith("https://github.com/"):
             if len(segments) < 5:
-                return ("", "")
+                return ""
             owner = segments[0]
             repo = segments[1]
             kind = segments[2].lower()
             ref = segments[3]
             path = "/".join(segments[4:])
             if kind not in ("blob", "raw", "raw-refs"):
-                return ("", "")
+                return ""
+            if ref.lower() != artifact_digest or not path:
+                return ""
+            return (
+                "https://raw.githubusercontent.com/"
+                + owner
+                + "/"
+                + repo
+                + "/"
+                + artifact_digest
+                + "/"
+                + path
+            )
 
-        else:
-            return ("", "")
-
-        if ref.lower() != artifact_digest or not path:
-            return ("", "")
-
-        return (
-            "https://api.github.com/repos/"
-            + owner
-            + "/"
-            + repo
-            + "/contents/"
-            + path
-            + "?ref="
-            + artifact_digest,
-            "github-contents-json",
-        )
+        return ""
 
     # ========================================================
     # ARTIFACT-BOUND CONSENSUS
@@ -276,33 +278,20 @@ class LicenseCompat(gl.Contract):
         policy = str(self.compatibility_policy)
         max_license_chars = self.MAX_LICENSE_ARTIFACT_CHARS
 
-        package_fetch_url, package_fetch_mode = self._artifact_fetch_spec(
+        package_fetch_url = self._artifact_fetch_spec(
             package_uri, package_digest
         )
-        license_fetch_url, license_fetch_mode = self._artifact_fetch_spec(
+        license_fetch_url = self._artifact_fetch_spec(
             license_uri, license_digest
         )
 
-        def fetch_text(fetch_url: str, fetch_mode: str):
+        def fetch_text(fetch_url: str):
             if not fetch_url:
                 return None
-            response = gl.nondet.web.get(fetch_url)
-            if int(response.status_code) >= 400:
+            text = gl.nondet.web.render(fetch_url, mode="text")
+            if not isinstance(text, str):
                 return None
-            body = response.body.decode("utf-8")
-
-            if fetch_mode == "github-contents-json":
-                payload = json.loads(body)
-                if not isinstance(payload, dict):
-                    return None
-                if str(payload.get("encoding", "")).strip().lower() != "base64":
-                    return None
-                encoded = str(payload.get("content", "")).replace("\n", "")
-                if not encoded:
-                    return None
-                return base64.b64decode(encoded).decode("utf-8").strip()
-
-            return body.strip()
+            return text.strip()
 
         def sanitize_document(text: str) -> str:
             # Primary artifact text is evidence. Preserve legitimate license
@@ -319,7 +308,7 @@ class LicenseCompat(gl.Contract):
 
         def evaluate_once():
             try:
-                package_text = fetch_text(package_fetch_url, package_fetch_mode)
+                package_text = fetch_text(package_fetch_url)
             except Exception:
                 return {"decision": PACKAGE_UNREACHABLE}
 
@@ -353,7 +342,7 @@ class LicenseCompat(gl.Contract):
                 return {"decision": PACKAGE_MANIFEST_INVALID}
 
             try:
-                license_text = fetch_text(license_fetch_url, license_fetch_mode)
+                license_text = fetch_text(license_fetch_url)
             except Exception:
                 return {"decision": LICENSE_UNREACHABLE}
 
