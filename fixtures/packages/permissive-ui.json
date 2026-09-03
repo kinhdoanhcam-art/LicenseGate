@@ -1,0 +1,6 @@
+{
+  "schema": "licensegate-package-v1",
+  "package_name": "PermissiveUI",
+  "package_version": "1.4.2",
+  "license_path": "fixtures/licenses/permissive.txt"
+}

@@ -1,0 +1,1 @@
+Permission is granted to use, copy, modify, distribute, sublicense, and sell this software, including for commercial purposes. Modified or combined works may be distributed under any license chosen by the user. There is no requirement to disclose source code, publish modifications, or relicense the combined project under this license.
