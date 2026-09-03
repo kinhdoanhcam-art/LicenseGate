@@ -26,6 +26,12 @@ Explorer:
 https://explorer-studio.genlayer.com/address/0x75F709c6bd1ba99bc96847E7e901cfb1A00D3404
 ```
 
+Production dApp:
+
+```text
+https://license-gate-iota.vercel.app/
+```
+
 Reviewer fixture commit:
 
 ```text
@@ -282,6 +288,23 @@ This directly demonstrates both parts of the steward request: verdicts are bound
 
 ---
 
+# Production Vercel smoke — PASS
+
+Observed on `https://license-gate-iota.vercel.app/` after the final deployment:
+
+```text
+Overview: Evaluated = 3, Admitted = 2, last verdict = INCOMPATIBLE
+Registry: PermissiveUI@1.4.2 and PermissiveCharts@2.0.0 admitted separately
+Registry: CopyleftCore@3.1.0 visible in verdict history and not admitted
+Evaluate: reviewer presets load commit-pinned package/license URLs and full fixture commit
+Contract: 0x75F709c6bd1ba99bc96847E7e901cfb1A00D3404
+Fixture commit: c14f69383066ec103dfa2654f726cd801455bd96
+```
+
+No additional write transaction was submitted from Vercel during this smoke check.
+
+---
+
 # Final resubmission acceptance matrix
 
 ```text
@@ -294,7 +317,7 @@ Copyleft -> INCOMPATIBLE -> not admitted                  PASS
 Version mismatch -> execution error / no state mutation   PASS
 Registry identity keyed by package name + version         PASS
 Frontend source/build/local smoke                         PASS
-Vercel points to frozen V2.1 contract                     VERIFY AFTER DEPLOY
+Vercel points to frozen V2.1 contract                     PASS
 ```
 
 For resubmission, use only the frozen V2.1 Explorer address above together with the current GitHub repository and production Vercel URL.

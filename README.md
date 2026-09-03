@@ -199,6 +199,12 @@ Explorer:
 https://explorer-studio.genlayer.com/address/0x75F709c6bd1ba99bc96847E7e901cfb1A00D3404
 ```
 
+Production dApp:
+
+```text
+https://license-gate-iota.vercel.app/
+```
+
 Reviewer fixture commit:
 
 ```text
@@ -234,6 +240,7 @@ Non-maintainer authorization                     PASS (local mock)
 Browser console smoke                            PASS
 StudioNet fresh deployment                       PASS
 Frontend static/local verification                PASS
+Vercel Overview / Registry / Evaluate smoke       PASS
 ```
 
 See [`TESTING.md`](./TESTING.md) for the exact reviewer path and observed StudioNet evidence.
